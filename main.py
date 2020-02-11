@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import re
 import typing
 from typing import List
 
@@ -19,7 +20,10 @@ def remove_inline_returns(text: str) -> str:
 
 def get_text_without_tag(segment, tag: str) -> List:
     text = []
-    text.append(segment.find(tag).previous_sibling.strip())
+    t = segment.find(tag)
+    if t is None:
+        return [segment.text]
+    text.append(t.previous_sibling.strip())
     text.extend(get_text_after_tag(segment, tag))
     return text
 
@@ -38,11 +42,114 @@ headers = {
 
 req = requests.get(url, headers=headers)
 
-raw_html = BeautifulSoup(req.content, 'html.parser')
+page_html = BeautifulSoup(req.content, 'html.parser')
 
-event_tables = raw_html.find(id='mainSubFull').find_all('table')[
-    0].find_all('table')[2:]
+print(page_html.prettify())
 
+def get_main_table(page_html):
+    return page_html.find(id='mainSubFull').find_all('table')
+
+main_sub_table = get_main_table(page_html)
+
+def split_main_sub_2_tables(page_html):
+    return page_html.find(id='mainSubFull').find_all('table')[
+    0].find_all('table')
+
+def get_event_report_numbers(er_tables_html):
+    er_num_table_rows = er_tables_html.find_all(href = re.compile('#en'))
+    return [int(x.text) for x in er_num_table_rows]
+
+def event_categorical_info_html_from_demarc_tag(tag):
+    # correct table appears to be 4 sibling away, and the first table that shows up
+    return tag.find_next_siblings('table')[0]
+
+def event_status_info_html_from_demarc_tag(tag):
+    # correct table appears to be 4 sibling away, and the second table that shows up
+    return tag.find_next_siblings('table')[1]
+
+def event_desc_html_from_demarc_tag(tag):
+    # correct table appears to be 4 sibling away, and the third table that shows up
+    return tag.find_next_siblings('table')[2]
+
+from abc import ABC, abstractmethod
+class EventInfo(ABC):
+    def __init__(self, table_html):
+        self.table_html = table_html
+        self.parsed_data = {}
+
+    def __repr__(self):
+        return self.table_html.prettify()
+    
+    @abstractmethod
+    def parse_table_html(self):
+        pass
+
+class EventCategoricalInfo(EventInfo):
+    def __init__(self, table_html):
+        super().__init__(table_html)
+        self.table_cells = self.table_html.find_all('td', {"align":"left"})
+    
+    def parse_table_html(self):
+        #3x2 table, usually
+        #1,1
+        self.parsed_data['er_type'] = self._parse_er_type()
+        #2,1 - rows delinated by <br> tags
+        ei = []
+        for segment in self.table_cells: 
+            ei.extend(get_text_without_tag(segment, 'br'))
+        for text in ei:
+            t = text.split(':',1)
+            if len(t) > 1:
+                k,v = t
+                self.parsed_data[k] = v
+                
+    def _parse_er_type(self):
+        return self.table_cells[0].text
+class EventStatusInfo(EventInfo):
+    def __init__(self, table_html):
+        super().__init__(table_html)
+    
+    def parse_table_html(self):
+        return self.table_html
+
+class EventDescInfo(EventInfo):
+    def __init__(self, table_html):
+        super().__init__(table_html)
+    
+    def parse_table_html(self):
+        return self.table_html
+
+
+def get_event_html_tables_from_main(main_sub_table):
+    # tables appear to have a name that follows <a name="en{eventnumber}"></a>
+    er_demarcation_tags = main_sub_table[0].find_all('a', {"name":re.compile('en')})
+    event_tables_html = []
+
+    for tag in er_demarcation_tags:
+        
+        event_info_html = event_categorical_info_html_from_demarc_tag(tag)
+        eci = EventCategoricalInfo(event_info_html)
+        
+        event_status_html = event_status_info_html_from_demarc_tag(tag)
+        esi = EventStatusInfo(event_status_html)
+        
+        event_desc_html = event_desc_html_from_demarc_tag(tag)
+        edi = EventDescInfo(event_status_html)
+
+        event_tables_html.append([eci, esi, edi])
+
+    return event_tables_html
+
+event_html_tables = get_event_html_tables_from_main(main_sub_table)
+
+ex_cat_info_table = event_html_tables[0][0]
+
+ex_cat_info_table.parse_table_html()
+
+ex_cat_info_table.parsed_data
+
+
+event_report_nums = get_event_report_numbers(main_sub_tables[1])
 event_info_table = event_tables[0]
 tds = event_info_table.find_all('td')
 event_type_text: List[str] = tds[0].text.strip()
@@ -61,7 +168,6 @@ event_text: List[str] = get_text_without_tag(event_description_table, 'br')
 event_text: List[str] = list(
     filter(lambda x: x if x != '' else None, event_text))
 event_title_text: str = event_text[0]
-
 
 class EventNotificationReport(object):
     def __init__(self, raw_html):
@@ -110,12 +216,9 @@ class Event(object):
         return event_text
 
 
-class EventTable(object):
-    def __init__(self):
-        pass
 
 
-class EventInfo(EventTable):
+class EventStationInfo(EventInfo):
     def __init__(self, first_table_chunk):
         super().__init__()
         self.event_info_table = first_table_chunk
@@ -132,7 +235,7 @@ class EventInfo(EventTable):
             self.tds[5].text)
 
 
-class EventPlantStatus(EventTable):
+class EventPlantStatus(EventInfo):
     def __init__(self, second_table_chunk):
         super().__init__()
         self.event_plant_status_table = second_table_chunk
@@ -140,6 +243,10 @@ class EventPlantStatus(EventTable):
             x.text for x in self.event_plant_status_table.find_all('td')]
         self.unit_table = zip(
             self.unit_status_text[:7], self.unit_status_text[7:])
+
+
+class EventDescription(EventInfo):
+    def __init__(self, raw_html):
 
 
 en = EventNotificationReport.from_url(url)
