@@ -6,7 +6,7 @@ import typing
 from typing import List
 
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString, Tag
 from requests.exceptions import HTTPError
 
 
@@ -75,7 +75,6 @@ from abc import ABC, abstractmethod
 class EventInfo(ABC):
     def __init__(self, table_html):
         self.table_html = table_html
-        self.parsed_data = {}
 
     def __repr__(self):
         return self.table_html.prettify()
@@ -88,29 +87,87 @@ class EventCategoricalInfo(EventInfo):
     def __init__(self, table_html):
         super().__init__(table_html)
         self.table_cells = self.table_html.find_all('td', {"align":"left"})
+        self.event_contact_and_time = {}
+        self.emer_info = []
+        self.person_info = []
+        self.event_number = None
     
     def parse_table_html(self):
         #3x2 table, usually
         #1,1
-        self.parsed_data['er_type'] = self._parse_er_type()
+        self.event_contact_and_time['er_type'] = self._parse_er_type()
         #2,1 - rows delinated by <br> tags
         ei = []
-        for segment in self.table_cells: 
+        for segment in self.table_cells[1:4]: 
             ei.extend(get_text_without_tag(segment, 'br'))
         for text in ei:
             t = text.split(':',1)
             if len(t) > 1:
                 k,v = t
-                self.parsed_data[k] = v
-                
+                self.event_contact_and_time[k] = v
+
+        self.emer_info = self._parse_emergency_info(self.table_cells[4])
+        self.person_info = self._parse_person_info(self.table_cells[5])
+        self.event_number = int(self.event_contact_and_time.get('Event Number', None).strip())   
+        
     def _parse_er_type(self):
         return self.table_cells[0].text
+    
+    def _parse_cat_contact_info():
+        pass
+    
+    def _parse_cat_time_info():
+        pass
+    
+    def _parse_person_info(self, segment):
+        print(segment)
+        return self._parse_stacked_line_breaks(segment)
+
+    def _parse_emergency_info(sel,segment):
+        emergency_class_text = [segment.find('br').previous_sibling.strip()]
+        cfrs = ['10_cfr_sections',[]]
+        for br in segment.find_all('br')[1:]:
+            next_text = br.next_sibling
+            if not (next_text and isinstance(next_text,NavigableString)):
+                continue
+            next_text2 = next_text.next_sibling
+            if next_text2 and isinstance(next_text2, Tag) and next_text2.name == 'br':
+                text = str(next_text).strip()
+                if text:
+                    cfrs[1].append(next_text.strip()) 
+        return emergency_class_text + cfrs
+    
+    def _parse_stacked_line_breaks(self, segment):
+        cfrs = [segment.find('br').previous_sibling.strip(),[]]
+        for br in segment.find_all('br'):
+            next_text = br.next_sibling
+            if not (next_text and isinstance(next_text, NavigableString)):
+                continue
+            next_text2 = next_text.next_sibling
+            if next_text2 and isinstance(next_text2, Tag) and next_text2.name == 'br':
+                text = str(next_text).strip()
+                if text:
+                    cfrs[1].append(next_text.strip()) 
+        return cfrs
+
 class EventStatusInfo(EventInfo):
     def __init__(self, table_html):
         super().__init__(table_html)
-    
+        self.unit_status_text = None
+        self.unit_table = None
+        self.table_cells = self.table_html.find_all('td')
+
     def parse_table_html(self):
-        return self.table_html
+        self.unit_status_text = [
+            x.text for x in self.table_cells]
+
+        num_cols = len(self.unit_status_text)//2
+        print(num_cols)
+        
+        self.unit_table = dict(zip(
+            self.unit_status_text[:num_cols], self.unit_status_text[num_cols:]))
+        
+        return self.unit_table
 
 class EventDescInfo(EventInfo):
     def __init__(self, table_html):
@@ -142,11 +199,18 @@ def get_event_html_tables_from_main(main_sub_table):
 
 event_html_tables = get_event_html_tables_from_main(main_sub_table)
 
-ex_cat_info_table = event_html_tables[0][0]
+ex_cat_info_table = event_html_tables[3][1]
 
 ex_cat_info_table.parse_table_html()
 
-ex_cat_info_table.parsed_data
+ex_cat_info_table.table_cells
+
+ex_cat_info_table.event_contact_and_time
+
+ex_cat_info_table.emer_info
+
+ex_cat_info_table.person_info
+
 
 
 event_report_nums = get_event_report_numbers(main_sub_tables[1])
@@ -214,9 +278,6 @@ class Event(object):
         event_text: List[str] = list(
             filter(lambda x: x if x != '' else None, event_text))
         return event_text
-
-
-
 
 class EventStationInfo(EventInfo):
     def __init__(self, first_table_chunk):
