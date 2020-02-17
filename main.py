@@ -103,7 +103,6 @@ class EventCategoricalInfo(EventInfo):
             if len(t) > 1:
                 k,v = t
                 self.event_contact_and_time[k] = v
-                self.parsed_data[k] = v.strip()
 
         self.emer_info = self._parse_emergency_info(self.table_cells[4])
         self.person_info = self._parse_person_info(self.table_cells[5])
@@ -149,19 +148,6 @@ class EventCategoricalInfo(EventInfo):
                     cfrs[1].append(next_text.strip()) 
         return cfrs
 
-    
-    def _check_and_get_geo_state_field(self, texts:List[str]):
-        for idx, text in enumerate(texts):
-            state_exist:int = text.find('\xa0State')
-            if state_exist != -1:
-                texts.remove(text)
-                prev_val, state_kv = text.split('\xa0')
-                texts.append(prev_val)
-                texts.append(state_kv)     
-
-    def _parse_er_type(self):
-        return self.table_cells[0].text
-        
 class EventStatusInfo(EventInfo):
     def __init__(self, table_html):
         super().__init__(table_html)
