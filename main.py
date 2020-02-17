@@ -10,6 +10,9 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 from requests.exceptions import HTTPError
 
 
+headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'}
+
+
 def get_text_after_tag(segment, tag: str) -> List:
     return [x.next_sibling.strip() for x in segment.find_all(tag)]
 
@@ -35,21 +38,8 @@ def chunks(l, n):
         yield l[i:i+n]
 
 
-url = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050606en.html'
-
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'}
-
-req = requests.get(url, headers=headers)
-
-page_html = BeautifulSoup(req.content, 'html.parser')
-
-print(page_html.prettify())
-
 def get_main_table(page_html):
     return page_html.find(id='mainSubFull').find_all('table')
-
-main_sub_table = get_main_table(page_html)
 
 def split_main_sub_2_tables(page_html):
     return page_html.find(id='mainSubFull').find_all('table')[
@@ -102,9 +92,18 @@ class EventCategoricalInfo(EventInfo):
             ei.extend(get_text_without_tag(segment, 'br'))
         for text in ei:
             t = text.split(':',1)
+            if t[0] in {'Region', 'City'}:
+                # remove the secondary data k,v field from the string, based on seperation by /xa0 byte
+                self._check_and_get_geo_state_field(t)
+                #add newest colon seperated field to end of ei
+                ei.append(t[-1])
+                #remove that colon sep field from t
+                t.pop()
+                
             if len(t) > 1:
                 k,v = t
                 self.event_contact_and_time[k] = v
+                self.parsed_data[k] = v.strip()
 
         self.emer_info = self._parse_emergency_info(self.table_cells[4])
         self.person_info = self._parse_person_info(self.table_cells[5])
@@ -150,6 +149,19 @@ class EventCategoricalInfo(EventInfo):
                     cfrs[1].append(next_text.strip()) 
         return cfrs
 
+    
+    def _check_and_get_geo_state_field(self, texts:List[str]):
+        for idx, text in enumerate(texts):
+            state_exist:int = text.find('\xa0State')
+            if state_exist != -1:
+                texts.remove(text)
+                prev_val, state_kv = text.split('\xa0')
+                texts.append(prev_val)
+                texts.append(state_kv)     
+
+    def _parse_er_type(self):
+        return self.table_cells[0].text
+        
 class EventStatusInfo(EventInfo):
     def __init__(self, table_html):
         super().__init__(table_html)
@@ -197,41 +209,26 @@ def get_event_html_tables_from_main(main_sub_table):
 
     return event_tables_html
 
-event_html_tables = get_event_html_tables_from_main(main_sub_table)
 
-ex_cat_info_table = event_html_tables[3][1]
+# event_report_nums = get_event_report_numbers(main_sub_tables[1])
+# event_info_table = event_tables[0]
+# tds = event_info_table.find_all('td')
+# event_type_text: List[str] = tds[0].text.strip()
+# event_number_text: List[str] = tds[1].text.strip()
+# event_contact_info: List[str] = get_text_after_tag(tds[2], 'br')
+# event_notification_timing: List[str] = get_text_after_tag(tds[3], 'br')
+# event_emergency_class_legal: List[str] = get_text_after_tag(tds[4], 'br')
+# event_contact_person: List[str] = remove_inline_returns(tds[5].text)
 
-ex_cat_info_table.parse_table_html()
+# event_plant_status_table = event_tables[1]
+# unit_status_text = [x.text for x in event_plant_status_table.find_all('td')]
+# unit_table = zip(unit_status_text[:7], unit_status_text[7:])
 
-ex_cat_info_table.table_cells
-
-ex_cat_info_table.event_contact_and_time
-
-ex_cat_info_table.emer_info
-
-ex_cat_info_table.person_info
-
-
-
-event_report_nums = get_event_report_numbers(main_sub_tables[1])
-event_info_table = event_tables[0]
-tds = event_info_table.find_all('td')
-event_type_text: List[str] = tds[0].text.strip()
-event_number_text: List[str] = tds[1].text.strip()
-event_contact_info: List[str] = get_text_after_tag(tds[2], 'br')
-event_notification_timing: List[str] = get_text_after_tag(tds[3], 'br')
-event_emergency_class_legal: List[str] = get_text_after_tag(tds[4], 'br')
-event_contact_person: List[str] = remove_inline_returns(tds[5].text)
-
-event_plant_status_table = event_tables[1]
-unit_status_text = [x.text for x in event_plant_status_table.find_all('td')]
-unit_table = zip(unit_status_text[:7], unit_status_text[7:])
-
-event_description_table = event_tables[2].find('td')
-event_text: List[str] = get_text_without_tag(event_description_table, 'br')
-event_text: List[str] = list(
-    filter(lambda x: x if x != '' else None, event_text))
-event_title_text: str = event_text[0]
+# event_description_table = event_tables[2].find('td')
+# event_text: List[str] = get_text_without_tag(event_description_table, 'br')
+# event_text: List[str] = list(
+#     filter(lambda x: x if x != '' else None, event_text))
+# event_title_text: str = event_text[0]
 
 class EventNotificationReport(object):
     def __init__(self, raw_html):
@@ -308,9 +305,9 @@ class EventPlantStatus(EventInfo):
 
 class EventDescription(EventInfo):
     def __init__(self, raw_html):
+        pass
 
-
-en = EventNotificationReport.from_url(url)
+# en = EventNotificationReport.from_url(url)
 
 
 # get all dates
@@ -318,14 +315,6 @@ def build_nrc_event_report_url(year, month, day):
     month, day = str(month).zfill(2), str(day).zfill(2)
     url = f'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/{year}/{year}{month}{day}en.html'
     return url
-
-
-assert build_nrc_event_report_url(
-    2004, 12, 30) == 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2004/20041230en.html'
-
-assert build_nrc_event_report_url(
-    2004, 2, 3) == 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2004/20040203en.html'
-
 
 def generate_nrc_event_report_urls():
     dates = {}
@@ -338,40 +327,57 @@ def generate_nrc_event_report_urls():
                     year, month, day)
     return dates
 
+if __name__ == "__main__":
+    
+    url = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050606en.html'
 
-er_urls = generate_nrc_event_report_urls()
+    assert build_nrc_event_report_url(
+        2004, 12, 30) == 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2004/20041230en.html'
 
-# 5592 days of event reports
+    assert build_nrc_event_report_url(
+        2004, 2, 3) == 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2004/20040203en.html'
 
-urls = list(er_urls.values())[800:810]
+    req = requests.get(url, headers=headers)
+    page_html = BeautifulSoup(req.content, 'html.parser')
+    main_table = get_main_table(page_html)
+    event_html_tables = get_event_html_tables_from_main(main_table)
+    ex_cat_info_table = event_html_tables[0][0]
+    ex_cat_info_table.parse_table_html()
+    print(ex_cat_info_table.parsed_data)
 
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'}
+    # er_urls = generate_nrc_event_report_urls()
 
-# loop the urls and skip any 404s
-for url in urls:
-    print(url)
-    try:
-        en = EventNotificationReport.from_url(url, headers)
-    except HTTPError:
-        next
+    # 5592 days of event reports
+
+#    urls = list(er_urls.values())[800:810]
+
+ #   headers = {
+        #'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'}
+
+    # loop the urls and skip any 404s
+ #   for url in urls:
+ #       print(url)
+ #       try:
+ #           en = EventNotificationReport.from_url(url, headers)
+  #      except HTTPError:
+  #          next
 
 
-# if __name__ == "__main__":
-#     event_info_table = event_tables[0]
-#     tds = event_info_table.find_all('td')
-#     event_type_text: List[str] = tds[0].text.strip()
-#     event_number_text: List[str] = tds[1].text.strip()
-#     event_contact_info: List[str] = get_text_after_tag(tds[2], 'br')
-#     event_notification_timing: List[str] = get_text_after_tag(tds[3], 'br')
-#     event_emergency_class_legal: List[str] = get_text_after_tag(tds[4], 'br')
-#     event_contact_person: List[str] = remove_inline_returns(tds[5].text)
+    # if __name__ == "__main__":
+    #     event_info_table = event_tables[0]
+    #     tds = event_info_table.find_all('td')
+    #     event_type_text: List[str] = tds[0].text.strip()
+    #     event_number_text: List[str] = tds[1].text.strip()
+    #     event_contact_info: List[str] = get_text_after_tag(tds[2], 'br')
+    #     event_notification_timing: List[str] = get_text_after_tag(tds[3], 'br')
+    #     event_emergency_class_legal: List[str] = get_text_after_tag(tds[4], 'br')
+    #     event_contact_person: List[str] = remove_inline_returns(tds[5].text)
 
-#     event_plant_status_table = event_tables[1]
-#     unit_status_text = [x.text for x in event_plant_status_table.find_all('td')]
-#     unit_table = zip(unit_status_text[:7], unit_status_text[7:])
+    #     event_plant_status_table = event_tables[1]
+    #     unit_status_text = [x.text for x in event_plant_status_table.find_all('td')]
+    #     unit_table = zip(unit_status_text[:7], unit_status_text[7:])
 
-#     event_description_table = event_tables[2].find('td')
-#     event_text:List[str] = get_text_without_tag(event_description_table,'br')
-#     event_text:List[str] = list(filter(lambda x: x if x!='' else None, event_text))
-#     event_title_text:str = event_text[0]
+    #     event_description_table = event_tables[2].find('td')
+    #     event_text:List[str] = get_text_without_tag(event_description_table,'br')
+    #     event_text:List[str] = list(filter(lambda x: x if x!='' else None, event_text))
+    #     event_title_text:str = event_text[0]
