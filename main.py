@@ -14,7 +14,7 @@ headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleW
 
 
 def get_text_after_tag(segment, tag: str) -> List:
-    return [x.next_sibling.strip() for x in segment.find_all(tag)]
+    return [x.next_sibling.strip() for x in segment.find_all(tag) if x.next_sibling.strip() is not '']
 
 
 def remove_inline_returns(text: str) -> str:
@@ -167,7 +167,6 @@ class EventCategoricalInfo(EventInfo):
                 texts.append(prev_val)
                 texts.append(state_kv)     
 
-
 class EventStatusInfo(EventInfo):
     def __init__(self, table_html):
         super().__init__(table_html)
@@ -194,12 +193,11 @@ class EventDescInfo(EventInfo):
         super().__init__(table_html)
     
     def parse_table_html(self):
-        return self.table_html
+        return get_text_without_tag(self.table_html, 'br')
 
-
-def get_event_html_tables_from_main(main_sub_table):
+def get_event_html_tables_from_main(main_table):
     # tables appear to have a name that follows <a name="en{eventnumber}"></a>
-    er_demarcation_tags = main_sub_table[0].find_all('a', {"name":re.compile('en')})
+    er_demarcation_tags = main_table[0].find_all('a', {"name":re.compile('en')})
     event_tables_html = []
 
     for tag in er_demarcation_tags:
@@ -211,7 +209,7 @@ def get_event_html_tables_from_main(main_sub_table):
         esi = EventStatusInfo(event_status_html)
         
         event_desc_html = event_desc_html_from_demarc_tag(tag)
-        edi = EventDescInfo(event_status_html)
+        edi = EventDescInfo(event_desc_html)
 
         event_tables_html.append([eci, esi, edi])
 
@@ -241,7 +239,6 @@ class EventNotificationReport(object):
             raise ValueError('Unable to fetch url')
         raw_html = BeautifulSoup(req.content, 'html.parser')
         return cls(raw_html)
-
 
 # get all dates
 def build_nrc_event_report_url(year, month, day):
@@ -275,7 +272,7 @@ if __name__ == "__main__":
     main_table = get_main_table(page_html)
     event_html_tables = get_event_html_tables_from_main(main_table)
     
-    ex_cat_info_table = event_html_tables[2][1]
+    ex_cat_info_table = event_html_tables[0][2]
     ex_cat_info_table.parse_table_html()
     #ex_cat_info_table.info
     #ex_cat_info_table.person_info
