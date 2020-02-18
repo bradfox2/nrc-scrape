@@ -76,7 +76,7 @@ class EventInfo(ABC):
 class EventCategoricalInfo(EventInfo):
     def __init__(self, table_html):
         super().__init__(table_html)
-        self.table_cells = self.table_html.find_all('td', {"align":"left"})
+        self.table_cols = self.table_html.find_all('td', {"align":"left"})
         self.info = {}
         self.emer_info = []
         self.person_info = []
@@ -88,7 +88,7 @@ class EventCategoricalInfo(EventInfo):
         self.info['er_type'] = self._parse_er_type()
         #2,1 - rows delinated by <br> tags
         ei = []
-        for segment in self.table_cells[1:4]: 
+        for segment in self.table_cols[1:4]: 
             ei.extend(get_text_without_tag(segment, 'br'))
         for text in ei:
             t = text.split(':',1)
@@ -115,12 +115,12 @@ class EventCategoricalInfo(EventInfo):
                 k,v = t
                 self.info[k] = v.strip()
 
-        self.emer_info = self._parse_emergency_info(self.table_cells[4])
-        self.person_info = self._parse_person_info(self.table_cells[5])
+        self.emer_info = self._parse_emergency_info(self.table_cols[4])
+        self.person_info = self._parse_person_info(self.table_cols[5])
         self.event_number = int(self.info.get('Event Number', None).strip())   
         
     def _parse_er_type(self):
-        return self.table_cells[0].text
+        return self.table_cols[0].text
     
     def _parse_cat_contact_info():
         pass
@@ -173,18 +173,20 @@ class EventStatusInfo(EventInfo):
         super().__init__(table_html)
         self.unit_status_text = None
         self.unit_table = None
-        self.table_cells = self.table_html.find_all('td')
+        self.table_cols = self.table_html.find_all('td')
+        self.table_rows = self.table_html.find_all('tr')
 
     def parse_table_html(self):
-        self.unit_status_text = [
-            x.text for x in self.table_cells]
 
-        num_cols = len(self.unit_status_text)//2
-        print(num_cols)
+        header = self.table_rows[0]
         
-        self.unit_table = dict(zip(
-            self.unit_status_text[:num_cols], self.unit_status_text[num_cols:]))
+        self.col_names = [col.text for col in header.find_all('td')]
+
+        if len(self.col_names) == 0: return None
         
+        # rows to list of dicts
+        self.unit_table = [{self.col_names[idx]:col.text for idx, col in enumerate(row.find_all('td'))} for row in self.table_rows[1:]]
+
         return self.unit_table
 
 class EventDescInfo(EventInfo):
@@ -272,8 +274,12 @@ if __name__ == "__main__":
     page_html = BeautifulSoup(req.content, 'html.parser')
     main_table = get_main_table(page_html)
     event_html_tables = get_event_html_tables_from_main(main_table)
-    ex_cat_info_table = event_html_tables[0][0]
+    
+    ex_cat_info_table = event_html_tables[2][1]
     ex_cat_info_table.parse_table_html()
+    #ex_cat_info_table.info
+    #ex_cat_info_table.person_info
+    
 
     # er_urls = generate_nrc_event_report_urls()
 
@@ -311,3 +317,6 @@ if __name__ == "__main__":
     #     event_text:List[str] = get_text_without_tag(event_description_table,'br')
     #     event_text:List[str] = list(filter(lambda x: x if x!='' else None, event_text))
     #     event_title_text:str = event_text[0]
+
+
+
