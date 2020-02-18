@@ -81,6 +81,7 @@ class EventCategoricalInfo(EventInfo):
         self.emer_info = []
         self.person_info = []
         self.event_number = None
+        self.parse_table_html()
     
     def parse_table_html(self):
         #3x2 table, usually
@@ -174,6 +175,7 @@ class EventStatusInfo(EventInfo):
         self.unit_table = None
         self.table_cols = self.table_html.find_all('td')
         self.table_rows = self.table_html.find_all('tr')
+        self.info = self.parse_table_html()
 
     def parse_table_html(self):
 
@@ -191,43 +193,45 @@ class EventStatusInfo(EventInfo):
 class EventDescInfo(EventInfo):
     def __init__(self, table_html):
         super().__init__(table_html)
+        self.info = self.parse_table_html()
     
     def parse_table_html(self):
         return get_text_without_tag(self.table_html, 'br')
 
-def get_event_html_tables_from_main(main_table):
-    # tables appear to have a name that follows <a name="en{eventnumber}"></a>
-    er_demarcation_tags = main_table[0].find_all('a', {"name":re.compile('en')})
-    event_tables_html = []
+class Event(object):
+    def __init__(self, demarcation_tag):
+        self._event_info_html = event_categorical_info_html_from_demarc_tag(demarcation_tag)
+        self._event_status_html = event_status_info_html_from_demarc_tag(demarcation_tag)
+        self._event_desc_html = event_desc_html_from_demarc_tag(demarcation_tag)
 
-    for tag in er_demarcation_tags:
-        
-        event_info_html = event_categorical_info_html_from_demarc_tag(tag)
-        eci = EventCategoricalInfo(event_info_html)
-        
-        event_status_html = event_status_info_html_from_demarc_tag(tag)
-        esi = EventStatusInfo(event_status_html)
-        
-        event_desc_html = event_desc_html_from_demarc_tag(tag)
-        edi = EventDescInfo(event_desc_html)
+        self.eci = EventCategoricalInfo(self._event_info_html)
+        self.esi = EventStatusInfo(self._event_status_html)
+        self.edi = EventDescInfo(self._event_desc_html)
 
-        event_tables_html.append([eci, esi, edi])
-
-    return event_tables_html
+    def __repr__(self):
+        return f'Event Num: {self.eci.event_number}'
 
 class EventNotificationReport(object):
-    def __init__(self, raw_html):
-        self.date = raw_html.find(id='mainSubFull').find_all('table')[
+    def __init__(self, page_html):
+        self.date = page_html.find(id='mainSubFull').find_all('table')[
             0].find('h1').text
-        self.raw_html = raw_html
-        self._event_tables = self.raw_html.find(id='mainSubFull').find_all('table')[
-            0].find_all('table')[2:]
-        self._event_table_chunks = chunks(self._event_tables, 3)
-        self.events: List[Events] = self._make_events()
+        self.events = []
+        self._page_html = page_html
 
-    def _make_events(self):
-        return [Event(chunk) for chunk in self._event_table_chunks]
+    def get_main_table(self, page_html):
+        return page_html.find(id='mainSubFull').find_all('table')
 
+    @classmethod
+    def get_events_from_main(cls, main_table):
+        # tables appear to have a name that follows <a name="en{eventnumber}"></a>
+        er_demarcation_tags = main_table[0].find_all('a', {"name":re.compile('en')})
+        event_tables_html = []
+
+        for tag in er_demarcation_tags:
+            e = Event(tag)
+            event_tables_html.append(e)
+        return event_tables_html
+    
     @classmethod
     def from_url(cls, url: str, headers) -> EventNotificationReport:
         req = None
@@ -237,8 +241,8 @@ class EventNotificationReport(object):
         req.raise_for_status()
         if not req:
             raise ValueError('Unable to fetch url')
-        raw_html = BeautifulSoup(req.content, 'html.parser')
-        return cls(raw_html)
+        page_html = BeautifulSoup(req.content, 'html.parser')
+        return cls(page_html)
 
 # get all dates
 def build_nrc_event_report_url(year, month, day):
@@ -270,13 +274,8 @@ if __name__ == "__main__":
     req = requests.get(url, headers=headers)
     page_html = BeautifulSoup(req.content, 'html.parser')
     main_table = get_main_table(page_html)
-    event_html_tables = get_event_html_tables_from_main(main_table)
-    
-    ex_cat_info_table = event_html_tables[0][2]
-    ex_cat_info_table.parse_table_html()
-    #ex_cat_info_table.info
-    #ex_cat_info_table.person_info
-    
+    events = get_events_from_main(main_table)
+    events
 
     # er_urls = generate_nrc_event_report_urls()
 
