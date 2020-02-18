@@ -77,7 +77,7 @@ class EventCategoricalInfo(EventInfo):
     def __init__(self, table_html):
         super().__init__(table_html)
         self.table_cells = self.table_html.find_all('td', {"align":"left"})
-        self.event_contact_and_time = {}
+        self.info = {}
         self.emer_info = []
         self.person_info = []
         self.event_number = None
@@ -85,7 +85,7 @@ class EventCategoricalInfo(EventInfo):
     def parse_table_html(self):
         #3x2 table, usually
         #1,1
-        self.event_contact_and_time['er_type'] = self._parse_er_type()
+        self.info['er_type'] = self._parse_er_type()
         #2,1 - rows delinated by <br> tags
         ei = []
         for segment in self.table_cells[1:4]: 
@@ -93,20 +93,31 @@ class EventCategoricalInfo(EventInfo):
         for text in ei:
             t = text.split(':',1)
             if t[0] in {'Region', 'City'}:
-                # remove the secondary data k,v field from the string, based on seperation by /xa0 byte
-                self._check_and_get_geo_state_field(t)
-                #add newest colon seperated field to end of ei
-                ei.append(t[-1])
-                #remove that colon sep field from t
-                t.pop()
                 
+                # NRC has put some colon seperated fields in line or 
+                # seperated by line break into a table row, need to 
+                # parse the row and seperate the 2nd colon seperated
+                # field from the first
+
+                # check for the state field in the Region or City rows
+                self._check_and_get_geo_state_field(t)
+                
+                # If a 2nd field is found (e.g. state) add it back to
+                # string data list for processing and then remove from 
+                # current colon sep value dict value, 2nd col sep field is
+                # still a 'something: value' string, and so it is the last 
+                # item on list
+                ei.append(t[-1])
+                t.pop()
+
+            #store remaining fields 
             if len(t) > 1:
                 k,v = t
-                self.event_contact_and_time[k] = v
+                self.info[k] = v.strip()
 
         self.emer_info = self._parse_emergency_info(self.table_cells[4])
         self.person_info = self._parse_person_info(self.table_cells[5])
-        self.event_number = int(self.event_contact_and_time.get('Event Number', None).strip())   
+        self.event_number = int(self.info.get('Event Number', None).strip())   
         
     def _parse_er_type(self):
         return self.table_cells[0].text
@@ -118,7 +129,6 @@ class EventCategoricalInfo(EventInfo):
         pass
     
     def _parse_person_info(self, segment):
-        print(segment)
         return self._parse_stacked_line_breaks(segment)
 
     def _parse_emergency_info(sel,segment):
@@ -147,6 +157,16 @@ class EventCategoricalInfo(EventInfo):
                 if text:
                     cfrs[1].append(next_text.strip()) 
         return cfrs
+    
+    def _check_and_get_geo_state_field(self, texts:List[str]):
+        for idx, text in enumerate(texts):
+            state_exist:int = text.find('\xa0State')
+            if state_exist != -1:
+                texts.remove(text)
+                prev_val, state_kv = text.split('\xa0')
+                texts.append(prev_val)
+                texts.append(state_kv)     
+
 
 class EventStatusInfo(EventInfo):
     def __init__(self, table_html):
@@ -195,27 +215,6 @@ def get_event_html_tables_from_main(main_sub_table):
 
     return event_tables_html
 
-
-# event_report_nums = get_event_report_numbers(main_sub_tables[1])
-# event_info_table = event_tables[0]
-# tds = event_info_table.find_all('td')
-# event_type_text: List[str] = tds[0].text.strip()
-# event_number_text: List[str] = tds[1].text.strip()
-# event_contact_info: List[str] = get_text_after_tag(tds[2], 'br')
-# event_notification_timing: List[str] = get_text_after_tag(tds[3], 'br')
-# event_emergency_class_legal: List[str] = get_text_after_tag(tds[4], 'br')
-# event_contact_person: List[str] = remove_inline_returns(tds[5].text)
-
-# event_plant_status_table = event_tables[1]
-# unit_status_text = [x.text for x in event_plant_status_table.find_all('td')]
-# unit_table = zip(unit_status_text[:7], unit_status_text[7:])
-
-# event_description_table = event_tables[2].find('td')
-# event_text: List[str] = get_text_without_tag(event_description_table, 'br')
-# event_text: List[str] = list(
-#     filter(lambda x: x if x != '' else None, event_text))
-# event_title_text: str = event_text[0]
-
 class EventNotificationReport(object):
     def __init__(self, raw_html):
         self.date = raw_html.find(id='mainSubFull').find_all('table')[
@@ -240,60 +239,6 @@ class EventNotificationReport(object):
             raise ValueError('Unable to fetch url')
         raw_html = BeautifulSoup(req.content, 'html.parser')
         return cls(raw_html)
-
-
-class Event(object):
-
-    ''' this is a dumb architecture and should be able to be handed the raw html of a section of the nrc page and parsed down from there, but oh well'''
-
-    def __init__(self, table_chunks):
-        self.table_chunks = table_chunks
-        self.event_info: EventInfo = EventInfo(table_chunks[0])
-        self.event_plant_status: EventPlantStatus = EventPlantStatus(
-            table_chunks[1])
-        self.event_description: List[str] = self.parse_description_text()
-        self.event_description_title: str = self.event_description.pop(0)
-
-    def parse_description_text(self) -> List[str]:
-        event_description_table = self.table_chunks[2].find('td')
-        event_text: List[str] = get_text_without_tag(
-            event_description_table, 'br')
-        event_text: List[str] = list(
-            filter(lambda x: x if x != '' else None, event_text))
-        return event_text
-
-class EventStationInfo(EventInfo):
-    def __init__(self, first_table_chunk):
-        super().__init__()
-        self.event_info_table = first_table_chunk
-        self.tds = self.event_info_table.find_all('td')
-        self.event_type_text: List[str] = self.tds[0].text.strip()
-        self.event_number_text: List[str] = self.tds[1].text.strip()
-        self.event_contact_info: List[str] = get_text_after_tag(
-            self.tds[2], 'br')
-        self.event_notification_timing: List[str] = get_text_after_tag(
-            self.tds[3], 'br')
-        self.event_emergency_class_legal: List[str] = get_text_after_tag(
-            self.tds[4], 'br')
-        self.event_contact_person: List[str] = remove_inline_returns(
-            self.tds[5].text)
-
-
-class EventPlantStatus(EventInfo):
-    def __init__(self, second_table_chunk):
-        super().__init__()
-        self.event_plant_status_table = second_table_chunk
-        self.unit_status_text = [
-            x.text for x in self.event_plant_status_table.find_all('td')]
-        self.unit_table = zip(
-            self.unit_status_text[:7], self.unit_status_text[7:])
-
-
-class EventDescription(EventInfo):
-    def __init__(self, raw_html):
-        pass
-
-# en = EventNotificationReport.from_url(url)
 
 
 # get all dates
@@ -329,7 +274,6 @@ if __name__ == "__main__":
     event_html_tables = get_event_html_tables_from_main(main_table)
     ex_cat_info_table = event_html_tables[0][0]
     ex_cat_info_table.parse_table_html()
-    print(ex_cat_info_table.parsed_data)
 
     # er_urls = generate_nrc_event_report_urls()
 
