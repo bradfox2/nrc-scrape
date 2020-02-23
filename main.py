@@ -1,22 +1,27 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
 
 import calendar
+import datetime
+import pprint
 import re
+import sys
 import typing
+from abc import ABC, abstractmethod
 from typing import List
 
+import dateutil.parser as dp
+import dateutil.tz as tz
 import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
 from requests.exceptions import HTTPError
 
-
+#use webbrowser headers to stop nrc security stuff from killing our requests
 headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'}
 
 
 def get_text_after_tag(segment, tag: str) -> List:
-    return [x.next_sibling.strip() for x in segment.find_all(tag) if x.next_sibling.strip() is not '']
+    return [x.next_sibling.strip() for x in segment.find_all(tag) if x.next_sibling.strip() != '']
 
 
 def remove_inline_returns(text: str) -> str:
@@ -54,20 +59,11 @@ def get_event_report_numbers(er_tables_html):
     return [int(x.text) for x in er_num_table_rows]
 
 
-def event_categorical_info_html_from_demarc_tag(tag):
-    # correct table appears to be 4 sibling away, and the first table that shows up
-    return tag.find_next_siblings('table')[0]
-
-
-def event_status_info_html_from_demarc_tag(tag):
-    # correct table appears to be 4 sibling away, and the second table that shows up
-    return tag.find_next_siblings('table')[1]
-
-
-def event_desc_html_from_demarc_tag(tag):
-    # correct table appears to be 4 sibling away, and the third table that shows up
-    return tag.find_next_siblings('table')[2]
-
+def event_html_from_demarc_tag(tag, table_num):
+    ''' Gets the table_num'th html table tag after tag.
+    Primarily used to get the html table under the event demarcation tag. 
+    '''
+    return tag.find_next_siblings('table')[table_num]
 
 class EventInfo(ABC):
     def __init__(self, table_html):
@@ -90,6 +86,10 @@ class EventCategoricalInfo(EventInfo):
         self.person_info = []
         self.event_number = None
         self.parse_table_html()
+    
+    def __repr__(self):
+        pp = pprint.PrettyPrinter()
+        return pp.ppformat(self.info)
 
     def parse_table_html(self):
         # 3x2 table, usually
@@ -126,21 +126,55 @@ class EventCategoricalInfo(EventInfo):
 
         self.emer_info = self._parse_emergency_info(self.table_cols[4])
         self.person_info = self._parse_person_info(self.table_cols[5])
-        self.event_number = int(self.info.get('Event Number', None).strip())
+        self.event_number = int(self.info.get('Event Number', None))
+        self.event_date = dp.parse(self.info.get('Event Date', None), fuzzy=True).date()
+        self.event_time = self._parse_time(self.info.get('Event Time', None))
+        self.facility = self._get_from_self_info('Facility')
+        self.hq_ops_officer = self._get_from_self_info('HQ OPS Officer')
+        self.last_update_date = dp.parse(self._get_from_self_info('Last Update Date'), fuzzy=True).date()
+        self.nrc_notified_by = self._get_from_self_info('NRC Notified By')
+        self.notification_date = dp.parse(self._get_from_self_info('Notification Date'), fuzzy=True).date()
+        self.notification_time = self._parse_time(self._get_from_self_info('Notification Time'))
+        self.rx_type = self._get_from_self_info('RX Type')
+        self.region = self._get_from_self_info('Region')
+        self.state = self._get_from_self_info('State')
+        self.unit = self._get_from_self_info('Unit')
+        self.er_type = self._get_from_self_info('er_type')
+        self.licensee = self._get_from_self_info('Licensee')
+        self.city = self._get_from_self_info('City')
+        self.county = self._get_from_self_info('County')
+        self.rep_org = self._get_from_self_info('Rep Org')
+        
+
+    def _parse_date(self, date_string):
+        try:
+            dte = dp.parse(date_string, fuzzy=True).date()
+        except ValueError:
+            Warning(f'Unable to parse {date_string} into datetime object.')
+            return date_string
+        else: 
+            raise
+    
+    def _parse_time(self, time_string):
+
+        tzinfos = {"EST": tz.gettz('EST'),"EDT": tz.gettz('EST'), "ET":tz.gettz('EST'), 'PDT':tz.gettz('America/Los_Angeles'), 'CST': tz.gettz('America/Chicago'), 'CDT': tz.gettz('America/Chicago'), 'MDT':tz.gettz('America/Denver'), "PST": tz.gettz('America/Los_Angeles'), "MST": tz.gettz('America/Denver')}
+
+        try:
+            dte = dp.parse(time_string, fuzzy=True, tzinfos = tzinfos).time()
+        except ValueError:
+            Warning(f'Unable to parse {time_string} into datetime object.')
+            return time_string
+
+    def _get_from_self_info(self, field):
+        return self.info.get(field,None)
 
     def _parse_er_type(self):
         return self.table_cols[0].text
 
-    def _parse_cat_contact_info():
-        pass
-
-    def _parse_cat_time_info():
-        pass
-
     def _parse_person_info(self, segment):
         return self._parse_stacked_line_breaks(segment)
 
-    def _parse_emergency_info(sel, segment):
+    def _parse_emergency_info(self, segment):
         emergency_class_text = [segment.find('br').previous_sibling.strip()]
         cfrs = ['10_cfr_sections', []]
         for br in segment.find_all('br')[1:]:
@@ -212,31 +246,43 @@ class EventDescInfo(EventInfo):
 
 class Event(object):
     def __init__(self, demarcation_tag):
-        self._event_info_html = event_categorical_info_html_from_demarc_tag(
-            demarcation_tag)
-        self._event_status_html = event_status_info_html_from_demarc_tag(
-            demarcation_tag)
-        self._event_desc_html = event_desc_html_from_demarc_tag(
-            demarcation_tag)
-
+        
+        self._event_info_html = event_html_from_demarc_tag(
+            demarcation_tag, 0)
         self.eci = EventCategoricalInfo(self._event_info_html)
-        self.esi = EventStatusInfo(self._event_status_html)
-        self.edi = EventDescInfo(self._event_desc_html)
+
+        # non power reactors dont have status'
+        if self.eci.er_type == 'Power Reactor':
+            self._event_status_html = event_html_from_demarc_tag(
+                demarcation_tag, 1)
+            self.esi = EventStatusInfo(self._event_status_html)
+            self._event_desc_html = event_html_from_demarc_tag(
+                demarcation_tag, 2)
+            self.edi = EventDescInfo(self._event_desc_html)
+
+        else:
+            self.esi = None
+            self._event_desc_html = event_html_from_demarc_tag(
+                demarcation_tag, 1)
+            self.edi = EventDescInfo(self._event_desc_html)
+        
+        self.event_number = self.eci.event_number
 
     def __repr__(self):
-        return f'Event Num: {self.eci.event_number}'
+        return f'Event Num: {self.event_number}'
 
 
 class EventNotificationReport(object):
     def __init__(self, page_html):
-        self.date = page_html.find(id='mainSubFull').find_all('table')[
-            0].find('h1').text
+        self.date = dp.parse(page_html.find(id='mainSubFull').find_all('table')[
+            0].find('h1').text, fuzzy=True)
         self.main_table = self.get_main_table(page_html)
         self.events=self.get_events_from_main(self.main_table)
         self._page_html=page_html
+        self.num_events = len(self.events)
 
     def __repr__(self):
-        return f'ENR from {str(self.date)}'
+        return f'Event Notification Report from {str(self.date.date())}. {self.num_events} events, numbers {", ".join([str(x.event_number) for x in self.events])}.'
 
     def get_main_table(self, page_html):
         return page_html.find(id = 'mainSubFull').find_all('table')
@@ -272,9 +318,9 @@ def build_nrc_event_report_url(year, month, day):
     url=f'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/{year}/{year}{month}{day}en.html'
     return url
 
-def generate_nrc_event_report_urls():
+def generate_nrc_event_report_urls(start_year = 2004, end_year = datetime.date.today().year):
     dates={}
-    for year in range(2003, 2020):
+    for year in range(start_year, end_year):
         # years before 2003 are in a weird format
         for month in range(1, 13):
             day_range=calendar.monthrange(year, month)
@@ -287,37 +333,42 @@ if __name__ == "__main__":
 
     url='https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050606en.html'
 
-    assert build_nrc_event_report_url(
-        2004, 12, 30) == 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2004/20041230en.html'
-
-    assert build_nrc_event_report_url(
-        2004, 2, 3) == 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2004/20040203en.html'
-
     e = EventNotificationReport.from_url(url, headers)
 
-    # req = requests.get(url, headers=headers)
-    # page_html = BeautifulSoup(req.content, 'html.parser')
-    # main_table = get_main_table(page_html)
-    # events = get_events_from_main(main_table)
-    # events
+    url2 ='https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2017/20171129en.html'
 
-    # er_urls = generate_nrc_event_report_urls()
+    f = EventNotificationReport.from_url(url2, headers)
 
-    # 5592 days of event reports
+    url3 = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050607en.html'
 
-#    urls = list(er_urls.values())[800:810]
+    g = EventNotificationReport.from_url(url3, headers)
+    
+    er_urls = generate_nrc_event_report_urls()
 
- #   headers = {
-        # 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'}
+    from random import sample 
 
-    # loop the urls and skip any 404s
- #   for url in urls:
- #       print(url)
- #       try:
- #           en = EventNotificationReport.from_url(url, headers)
-  #      except HTTPError:
-  #          next
+    urls = sample(list(er_urls.values()), 10)
 
+    #loop the urls and skip any 404s
+
+    def fetch_enrs(urls):
+        error_list = []
+        enrs = []
+        nurls = len(urls)
+        for idx, url in enumerate(urls):
+            print(f'{idx}/{nurls}, {url}')
+            try:
+                en = EventNotificationReport.from_url(url, headers)
+                enrs.append(en)
+                print('OK')
+            except HTTPError:
+                next
+            except:
+                error_list.append((url, sys.exc_info()[0]))
+                print('ERROR!')
+                next
+
+    fetch_enrs(urls)
 
     # if __name__ == "__main__":
     #     event_info_table = event_tables[0]
