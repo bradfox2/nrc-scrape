@@ -340,6 +340,7 @@ def generate_nrc_event_report_urls(start_year=2004, end_year=datetime.date.today
 def fetch_enrs(urls):
     error_list = []
     enrs = []
+    four_oh_fours = []
     nurls = len(urls)
     for idx, url in enumerate(urls):
         print(f'{idx}/{nurls}, {url}')
@@ -348,11 +349,14 @@ def fetch_enrs(urls):
             enrs.append(en)
             print('OK')
         except HTTPError:
+            four_oh_fours.append(url)
             next
         except:
             error_list.append((url, sys.exc_info()[0]))
             print('ERROR!')
             next
+    
+    print(f'{len(enrs)}:OK, {len(error_list)}:Failed, {len(four_oh_fours)}:404s')
 
 if __name__ == "__main__":
 
@@ -372,7 +376,5 @@ if __name__ == "__main__":
 
     from random import sample
 
-    urls = sample(list(er_urls.values()), 10)
-
-    # loop the urls and skip any 404s
+    urls = sample(list(er_urls.values()), 100)
     fetch_enrs(urls)
