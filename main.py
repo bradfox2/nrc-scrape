@@ -337,6 +337,23 @@ def generate_nrc_event_report_urls(start_year=2004, end_year=datetime.date.today
     return dates
 
 
+def fetch_enrs(urls):
+    error_list = []
+    enrs = []
+    nurls = len(urls)
+    for idx, url in enumerate(urls):
+        print(f'{idx}/{nurls}, {url}')
+        try:
+            en = EventNotificationReport.from_url(url, headers)
+            enrs.append(en)
+            print('OK')
+        except HTTPError:
+            next
+        except:
+            error_list.append((url, sys.exc_info()[0]))
+            print('ERROR!')
+            next
+
 if __name__ == "__main__":
 
     url = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050606en.html'
@@ -358,41 +375,4 @@ if __name__ == "__main__":
     urls = sample(list(er_urls.values()), 10)
 
     # loop the urls and skip any 404s
-
-    def fetch_enrs(urls):
-        error_list = []
-        enrs = []
-        nurls = len(urls)
-        for idx, url in enumerate(urls):
-            print(f'{idx}/{nurls}, {url}')
-            try:
-                en = EventNotificationReport.from_url(url, headers)
-                enrs.append(en)
-                print('OK')
-            except HTTPError:
-                next
-            except:
-                error_list.append((url, sys.exc_info()[0]))
-                print('ERROR!')
-                next
-
     fetch_enrs(urls)
-
-    # if __name__ == "__main__":
-    #     event_info_table = event_tables[0]
-    #     tds = event_info_table.find_all('td')
-    #     event_type_text: List[str] = tds[0].text.strip()
-    #     event_number_text: List[str] = tds[1].text.strip()
-    #     event_contact_info: List[str] = get_text_after_tag(tds[2], 'br')
-    #     event_notification_timing: List[str] = get_text_after_tag(tds[3], 'br')
-    #     event_emergency_class_legal: List[str] = get_text_after_tag(tds[4], 'br')
-    #     event_contact_person: List[str] = remove_inline_returns(tds[5].text)
-
-    #     event_plant_status_table = event_tables[1]
-    #     unit_status_text = [x.text for x in event_plant_status_table.find_all('td')]
-    #     unit_table = zip(unit_status_text[:7], unit_status_text[7:])
-
-    #     event_description_table = event_tables[2].find('td')
-    #     event_text:List[str] = get_text_without_tag(event_description_table,'br')
-    #     event_text:List[str] = list(filter(lambda x: x if x!='' else None, event_text))
-    #     event_title_text:str = event_text[0]
