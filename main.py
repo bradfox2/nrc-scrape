@@ -101,7 +101,7 @@ class EventCategoricalInfo(EventInfo):
 
     def __repr__(self):
         pp = pprint.PrettyPrinter()
-        return pp.ppformat(self.info)
+        return str(pp.pprint(self.info))
 
     def parse_table_html(self):
         # 3x2 table, usually
@@ -288,6 +288,11 @@ class Event(object):
             self._event_desc_html = event_html_from_demarc_tag(
                 demarcation_tag, 1)
             self.edi = EventDescInfo(self._event_desc_html)
+            
+            # if nrc has added another section about material event cat, reparse the full desc table
+            if 'This material event contains' in self.edi.info[0].strip():
+                self._event_desc_html = event_html_from_demarc_tag(demarcation_tag, 2)
+                self.edi = EventDescInfo(self._event_desc_html)
 
         self.event_number = self.eci.event_number
 
@@ -344,7 +349,7 @@ def build_nrc_event_report_url(year, month, day):
 
 def generate_nrc_event_report_urls(start_year=2004, end_year=datetime.date.today().year):
     ''' construct a list of nrc event report page urls from year start to years end'''
-    
+
     dates = {}
     for year in range(start_year, end_year):
         # years before 2003 are in a weird format
@@ -383,7 +388,7 @@ def fetch_enrs(urls):
 
 if __name__ == "__main__":
 
-    url = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20190517en.html'
+    url = 'http://www.nrc.gov/reading-rm/doc-collections/event-status/event/2019/20190517en.html'
 
     e = EventNotificationReport.from_url(url, headers)
 
