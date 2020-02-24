@@ -15,13 +15,16 @@ import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
 from requests.exceptions import HTTPError
 
+import logging
+import logs_setup
+
 # use webbrowser headers to stop nrc security stuff from killing our requests
 headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'}
 
 
 def get_text_after_tag(segment, tag: str) -> List:
-    return [x.next_sibling.strip() for x in segment.find_all(tag) if x.next_sibling.strip() != '']
+    return [x.next_sibling.strip() for x in segment.find_all(tag) if x.next_sibling not in  ('', None)]
 
 
 def remove_inline_returns(text: str) -> str:
@@ -56,7 +59,7 @@ def split_main_sub_2_tables(page_html):
 
 def get_event_report_numbers(er_tables_html):
     er_num_table_rows = er_tables_html.find_all(href=re.compile('#en'))
-    return [int(x.text) for x in er_num_table_rows]
+    return [int(x.text) for x in er_num_table_rows if x != None]
 
 
 def event_html_from_demarc_tag(tag, table_num):
@@ -123,7 +126,7 @@ class EventCategoricalInfo(EventInfo):
             # store remaining fields
             if len(t) > 1:
                 k, v = t
-                self.info[k] = v.strip()
+                self.info[k.strip()] = v.strip()
 
         self.emer_info = self._parse_emergency_info(self.table_cols[4])
         self.person_info = self._parse_person_info(self.table_cols[5])
@@ -347,18 +350,24 @@ def fetch_enrs(urls):
         try:
             en = EventNotificationReport.from_url(url, headers)
             enrs.append(en)
-            print('OK')
+            sl.info(en)
         except HTTPError:
             four_oh_fours.append(url)
+            fl.info(url)
             next
         except:
             error_list.append((url, sys.exc_info()[0]))
+            el.info((url, sys.exc_info()[0]))
             print('ERROR!')
             next
     
     print(f'{len(enrs)}:OK, {len(error_list)}:Failed, {len(four_oh_fours)}:404s')
 
-if __name__ == "__main__":
+url3 = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050607en.html'
+
+g = EventNotificationReport.from_url(url3, headers)
+
+if __name__ == "__main___":
 
     url = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050606en.html'
 
@@ -372,9 +381,18 @@ if __name__ == "__main__":
 
     g = EventNotificationReport.from_url(url3, headers)
 
+    url4 = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2018/20181017en.html'
+
+    h = EventNotificationReport.from_url(url4, headers)
+
     er_urls = generate_nrc_event_report_urls()
 
     from random import sample
 
     urls = sample(list(er_urls.values()), 100)
+
+    sl = logging.getLogger('success_log')
+    el = logging.getLogger('error_log')
+    fl = logging.getLogger('fof_log')
+
     fetch_enrs(urls)
