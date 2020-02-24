@@ -24,7 +24,15 @@ headers = {
 
 
 def get_text_after_tag(segment, tag: str) -> List:
-    return [x.next_sibling.strip() for x in segment.find_all(tag) if x.next_sibling not in  ('', None)]
+    texts = []
+    for x in segment.find_all(tag):
+        if x.next_sibling is not None and isinstance(x.next_sibling,str):
+            if x.next_sibling.strip() not in ('', None):
+                texts.append(x.next_sibling.strip())
+        elif str(x)[:4] == '<br>' and str(x)[:4] != '<br><br>':
+            texts.append(x.text.strip())
+    return texts
+    #return [x.next_sibling.strip() for x in segment.find_all(tag) if x.next_sibling.strip() not in  ('', None)]
 
 
 def remove_inline_returns(text: str) -> str:
@@ -227,6 +235,9 @@ class EventStatusInfo(EventInfo):
         self.table_cols = self.table_html.find_all('td')
         self.table_rows = self.table_html.find_all('tr')
         self.info = self.parse_table_html()
+    
+    def __repr__(self):
+        return str(self.unit_table)
 
     def parse_table_html(self):
 
@@ -248,6 +259,9 @@ class EventDescInfo(EventInfo):
     def __init__(self, table_html):
         super().__init__(table_html)
         self.info = self.parse_table_html()
+
+    def __repr__(self):
+        return str(self.info)
 
     def parse_table_html(self):
         return get_text_without_tag(self.table_html, 'br')
@@ -329,6 +343,8 @@ def build_nrc_event_report_url(year, month, day):
 
 
 def generate_nrc_event_report_urls(start_year=2004, end_year=datetime.date.today().year):
+    ''' construct a list of nrc event report page urls from year start to years end'''
+    
     dates = {}
     for year in range(start_year, end_year):
         # years before 2003 are in a weird format
@@ -341,6 +357,8 @@ def generate_nrc_event_report_urls(start_year=2004, end_year=datetime.date.today
 
 
 def fetch_enrs(urls):
+    '''generates a list of EventNotificationReport objects from a list of urls'''
+
     error_list = []
     enrs = []
     four_oh_fours = []
@@ -363,33 +381,17 @@ def fetch_enrs(urls):
     
     print(f'{len(enrs)}:OK, {len(error_list)}:Failed, {len(four_oh_fours)}:404s')
 
-url3 = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050607en.html'
+if __name__ == "__main__":
 
-g = EventNotificationReport.from_url(url3, headers)
-
-if __name__ == "__main___":
-
-    url = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050606en.html'
+    url = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20190517en.html'
 
     e = EventNotificationReport.from_url(url, headers)
-
-    url2 = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2017/20171129en.html'
-
-    f = EventNotificationReport.from_url(url2, headers)
-
-    url3 = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050607en.html'
-
-    g = EventNotificationReport.from_url(url3, headers)
-
-    url4 = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2018/20181017en.html'
-
-    h = EventNotificationReport.from_url(url4, headers)
 
     er_urls = generate_nrc_event_report_urls()
 
     from random import sample
 
-    urls = sample(list(er_urls.values()), 100)
+    urls = sample(list(er_urls.values()), 10)
 
     sl = logging.getLogger('success_log')
     el = logging.getLogger('error_log')
