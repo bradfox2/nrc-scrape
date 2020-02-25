@@ -164,11 +164,10 @@ class EventCategoricalInfo(EventInfo):
     def _parse_date(self, date_string):
         try:
             dte = dp.parse(date_string, fuzzy=True).date()
+            return dte
         except ValueError:
             Warning(f'Unable to parse {date_string} into datetime object.')
             return date_string
-        else:
-            raise
 
     def _parse_time(self, time_string):
 
@@ -177,6 +176,7 @@ class EventCategoricalInfo(EventInfo):
 
         try:
             dte = dp.parse(time_string, fuzzy=True, tzinfos=tzinfos).time()
+            return dte
         except ValueError:
             Warning(f'Unable to parse {time_string} into datetime object.')
             return time_string
@@ -218,7 +218,7 @@ class EventCategoricalInfo(EventInfo):
         return cfrs
 
     def _check_and_get_geo_state_field(self, texts: List[str]):
-        for idx, text in enumerate(texts):
+        for _, text in enumerate(texts):
             state_exist: int = text.find('\xa0State')
             if state_exist != -1:
                 texts.remove(text)
@@ -404,25 +404,8 @@ if __name__ == "__main__":
 
     # loop the urls and skip any 404s
 
-    def fetch_enrs(urls):
-        error_list = []
-        enrs = []
-        nurls = len(urls)
-        for idx, url in enumerate(urls):
-            print(f'{idx+1}/{nurls}, {url}')
-            try:
-                en = EventNotificationReport.from_url(url, headers)
-                enrs.append(en)
-                print('OK')
-            except HTTPError:
-                next
-            except:
-                error_list.append((url, sys.exc_info()[0]))
-                print('ERROR!')
-                next
-
     fetch_enrs(urls)
-    
+
     sl = logging.getLogger('success_log')
     el = logging.getLogger('error_log')
     fl = logging.getLogger('fof_log')
