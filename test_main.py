@@ -49,6 +49,9 @@ def test_event_notification_report_class_2(headers):
 def test_generate_er_urls():
     len(generate_nrc_event_report_urls(2003, 2019)) == 5263
 
+def test_generate_er_urls_smart():
+    assert isinstance(generate_nrc_event_report_urls(2003, 2019, only_known=True), list)
+
 
 def test_get_text_without_tag():
     # make sure we can parse double br tags as in 

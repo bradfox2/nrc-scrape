@@ -345,10 +345,19 @@ def build_nrc_event_report_url(year, month, day):
     month, day = str(month).zfill(2), str(day).zfill(2)
     url = f'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/{year}/{year}{month}{day}en.html'
     return url
+    
 
+import url_maker
 
-def generate_nrc_event_report_urls(start_year=2004, end_year=datetime.date.today().year):
+def generate_nrc_event_report_urls(start_year=2004, end_year=datetime.date.today().year, only_known=False):
     ''' construct a list of nrc event report page urls from year start to years end'''
+
+    if only_known is True:
+        urll = []
+        urls = url_maker.make_urls()
+        for key in urls.keys():
+            urll.extend(urls[key])
+        return urll    
 
     dates = {}
     for year in range(start_year, end_year):
