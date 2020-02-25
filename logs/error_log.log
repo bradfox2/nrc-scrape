@@ -1,0 +1,8 @@
+2020-02-24 09:08:50,487 - error_log - INFO - ('https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2018/20181017en.html', <class 'TypeError'>)
+2020-02-24 09:09:26,226 - error_log - INFO - ('https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2019/20190628en.html', <class 'TypeError'>)
+2020-02-24 09:09:40,028 - error_log - INFO - ('https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2018/20180821en.html', <class 'TypeError'>)
+2020-02-24 09:09:41,449 - error_log - INFO - ('https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2019/20190422en.html', <class 'TypeError'>)
+2020-02-24 09:09:50,925 - error_log - INFO - ('https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2018/20180618en.html', <class 'TypeError'>)
+2020-02-24 09:42:24,663 - error_log - INFO - ('https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2019/20190517en.html', <class 'TypeError'>)
+2020-02-24 09:42:28,940 - error_log - INFO - ('https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2019/20190712en.html', <class 'TypeError'>)
+2020-02-24 09:42:45,353 - error_log - INFO - ('https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2018/20181228en.html', <class 'TypeError'>)
