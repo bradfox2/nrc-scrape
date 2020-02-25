@@ -1,7 +1,9 @@
-#Testing 
+Set of modules to scrape Event Reports from the NRC.gov website. 
+
+#Tests 
 
 ```bash
-pytest test_main.py
+pytest 
 ```
 
 #Usage
@@ -18,7 +20,16 @@ pytest test_main.py
 
     g = EventNotificationReport.from_url(url3, headers)
 
-    er_urls = generate_nrc_event_report_urls()
+    g.events #>>> [event, event, ...]
+
+    #categorical info
+    g.events[0].eci.info
+    #status info for power reactors
+    g.events[0].esi
+    #description info
+    g.events[0].edi
+
+    er_urls = generate_nrc_event_report_urls(2004,2019,only_known=False)
 
     from random import sample
 
@@ -26,4 +37,6 @@ pytest test_main.py
 
     # loop the urls and skip any 404s
     fetch_enrs(urls)
+
+
 ```

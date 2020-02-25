@@ -2,3 +2,8 @@
 env
 .vscode
 scratch*.py
+dist
+build
+*.egg-info
+.pytest_cache
+__*__
