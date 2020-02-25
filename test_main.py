@@ -12,7 +12,9 @@ from requests.exceptions import HTTPError
 
 import pytest
 
-urls = ['https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050606en.html', 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2017/20171129en.html']
+urls = ['https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050606en.html', 
+        'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2017/20171129en.html',
+        'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2018/20181112en.html']
 
 @pytest.fixture
 def headers():
