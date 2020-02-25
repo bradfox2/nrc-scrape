@@ -1,12 +1,12 @@
 Set of modules to scrape Event Reports from the NRC.gov website. 
 
-#Tests 
+# Tests 
 
 ```bash
 pytest 
 ```
 
-#Usage
+# Usage
 ```python
     url = 'https://www.nrc.gov/reading-rm/doc-collections/event-status/event/2005/20050606en.html'
 
