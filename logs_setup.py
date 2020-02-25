@@ -13,5 +13,4 @@ for log in logs:
 
     fh.setFormatter(formatter)
 
-    # add the handlers to the logger
     logger.addHandler(fh)
